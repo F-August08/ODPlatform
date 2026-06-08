@@ -517,10 +517,18 @@ def main() -> None:
         logger.info("已取消操作，未做任何更改。")
         return
 
-    # ── 6. 执行删除 ──
+    # ── 6. 执行删除（先关闭文件日志句柄，释放 Windows 文件锁） ──
     logger.info("")
     logger.info("[阶段 4/4] 执行删除...")
     logger.info("-" * LINE_WIDTH)
+
+    # 关闭所有 FileHandler，释放当前日志文件的句柄
+    # （Windows 不允许删除被进程持有的文件，控制台 handler 保留）
+    file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+    for fh in file_handlers:
+        logger.removeHandler(fh)
+        fh.close()
+
     success, failed, errors = execute_deletion(to_delete, logger)
 
     # ── 7. (仅 full) 重新初始化 ──
