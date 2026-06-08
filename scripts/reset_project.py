@@ -18,7 +18,7 @@ import fnmatch
 import logging
 import sys
 from pathlib import Path
-from typing import List, Tuple, Set
+from typing import List, Optional, Tuple, Set
 
 # ── 路径初始化（与 init_project.py 完全相同）────────────────────────────
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -454,9 +454,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--level",
-        required=True,
         choices=["logs", "runtime", "full"],
-        help="重置级别: logs=仅日志, runtime=日志+数据+模型+训练产物, full=全部+重新初始化",
+        help="重置级别: logs=仅日志, runtime=日志+数据+模型+训练产物, full=全部+重新初始化（不指定则交互选择）",
     )
     parser.add_argument(
         "--dry-run",
@@ -471,10 +470,67 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 交互式级别选择
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _interactive_select_level() -> Optional[str]:
+    """交互式选择重置级别。
+
+    Returns:
+        "logs" | "runtime" | "full" | None (用户取消)
+    """
+    print()
+    print("=" * 60)
+    print("  ODPlatform 项目重置工具")
+    print("=" * 60)
+    print()
+    print("  请选择重置级别:")
+    print()
+    print("    A — 仅清理日志文件")
+    print("        删除 apps/platform/logging/ 下的所有 .log 文件")
+    print()
+    print("    B — 清理日志 + 运行时产物")
+    print("        删除日志 + data/ + models/ + runs/ + configs/")
+    print()
+    print("    C — 完整重置")
+    print("        删除以上全部 + 自动重新初始化项目")
+    print()
+    print("    Q — 退出")
+    print()
+    print("-" * 60)
+
+    while True:
+        try:
+            choice = input("  请输入 [A/B/C/Q]: ").strip().upper()
+        except (KeyboardInterrupt, EOFError):
+            print("\n")
+            return None
+
+        if choice == "A":
+            return "logs"
+        elif choice == "B":
+            return "runtime"
+        elif choice == "C":
+            return "full"
+        elif choice == "Q":
+            return None
+        else:
+            print(f"  无效选项 '{choice}'，请输入 A、B、C 或 Q")
+
+
 def main() -> None:
     """主入口。"""
     parser = build_parser()
     args = parser.parse_args()
+
+    # ── 0. 确定重置级别（命令行指定 或 交互选择） ──
+    level = args.level
+    if level is None:
+        level = _interactive_select_level()
+        if level is None:
+            print("已取消。")
+            return
 
     # ── 1. 初始化日志（必须在删除操作之前） ──
     logger = get_logger(
@@ -484,22 +540,22 @@ def main() -> None:
     )
     logger.info("=" * LINE_WIDTH)
     logger.info("ODPlatform 项目重置工具".center(LINE_WIDTH))
-    logger.info(f"级别: {args.level} | 模式: {'预览' if args.dry_run else '执行'} | 跳过确认: {'是' if args.yes else '否'}")
+    logger.info(f"级别: {level} | 模式: {'预览' if args.dry_run else '执行'} | 跳过确认: {'是' if args.yes else '否'}")
     logger.info("=" * LINE_WIDTH)
 
     # ── 2. 收集 ──
     logger.info("")
     logger.info("[阶段 1/4] 扫描可删除项...")
-    to_delete, protected = collect_deletable(args.level, logger)
+    to_delete, protected = collect_deletable(level, logger)
 
     # ── 3. 显示摘要 ──
     logger.info("")
     logger.info("[阶段 2/4] 生成删除摘要...")
-    display_summary(to_delete, protected, args.level, args.dry_run, logger)
+    display_summary(to_delete, protected, level, args.dry_run, logger)
 
     if not to_delete:
         logger.info("没有需要清理的内容。")
-        if args.level == "full":
+        if level == "full":
             logger.info("但仍将运行初始化以确保目录结构完整...")
             initialize_project()
         return
@@ -532,7 +588,7 @@ def main() -> None:
     success, failed, errors = execute_deletion(to_delete, logger)
 
     # ── 7. (仅 full) 重新初始化 ──
-    if args.level == "full":
+    if level == "full":
         logger.info("")
         logger.info("=" * LINE_WIDTH)
         logger.info("重新初始化项目...".center(LINE_WIDTH))
