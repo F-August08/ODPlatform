@@ -362,19 +362,26 @@ def display_summary(
 
 
 def confirm_action(skip_prompt: bool) -> bool:
-    """请求用户确认。
+    """请求用户二次确认。
 
     Args:
         skip_prompt: True 则跳过提示直接返回 True
 
     Returns:
-        True 表示用户确认继续
+        True 表示用户确认继续，False 表示取消
     """
     if skip_prompt:
         return True
     try:
-        response = input("\n  输入 'yes' 确认执行删除: ").strip()
-        return response == "yes"
+        response = input("\n  确认执行删除？[yes/no]: ").strip().lower()
+        if response == "yes":
+            return True
+        elif response == "no":
+            print("  已撤销，未做任何更改。")
+            return False
+        else:
+            print(f"  无效输入 '{response}'，请输入 yes 或 no。操作已取消。")
+            return False
     except (KeyboardInterrupt, EOFError):
         print("\n  已取消。")
         return False
@@ -498,6 +505,13 @@ def _interactive_select_level() -> Optional[str]:
     print()
     print("    Q — 退出")
     print()
+    print("-" * 60)
+    print("  [!] 白名单保护（无论选择哪种级别，以下内容均不可删除）:")
+    print("    · 源码: apps/*/src/, packages/")
+    print("    · 文档: docs/ (含架构决策记录 ADR)")
+    print("    · 测试: tests/, apps/platform/tests/")
+    print("    · 脚本: scripts/")
+    print("    · 配置: pyproject.toml, .odp-workspace, .gitignore, README.md")
     print("-" * 60)
 
     while True:
