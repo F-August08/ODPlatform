@@ -101,8 +101,8 @@ WHITELIST: List[Tuple[str, str]] = [
     ("exact", ".idea"),
     ("exact", ".vscode"),
 
-    # ── 初始化脚本运行日志（保留以供审计） ──
-    ("prefix", "apps/platform/logging/Init_project"),
+    # ── 重置操作审计日志（保留每次删除操作的记录） ──
+    ("prefix", "apps/platform/logging/Reset_project"),
 ]
 
 
@@ -510,7 +510,7 @@ def _interactive_select_level(logger: logging.Logger) -> Optional[str]:
     logger.info("")
     logger.info("    A — 仅清理日志文件")
     logger.info("        删除 apps/platform/logging/ 下的 .log 文件")
-    logger.info("        （保留 Init_project 初始化日志）")
+    logger.info("        （保留 Reset_project 审计日志）")
     logger.info("")
     logger.info("    B — 清理日志 + 运行时产物")
     logger.info("        删除日志 + data/ + models/ + runs/ + configs/")
@@ -527,7 +527,7 @@ def _interactive_select_level(logger: logging.Logger) -> Optional[str]:
     logger.info("    · 测试: tests/, apps/platform/tests/")
     logger.info("    · 脚本: scripts/")
     logger.info("    · 配置: pyproject.toml, .odp-workspace, .gitignore, README.md")
-    logger.info("    · 初始化日志: apps/platform/logging/Init_project/")
+    logger.info("    · 审计日志: apps/platform/logging/Reset_project/")
     logger.info("-" * 60)
     logger.info("  提示: 清理完成后可选择是否重新初始化项目目录。")
     logger.info("-" * 60)
