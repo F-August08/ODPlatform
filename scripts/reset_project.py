@@ -378,3 +378,175 @@ def confirm_action(skip_prompt: bool) -> bool:
     except (KeyboardInterrupt, EOFError):
         print("\n  已取消。")
         return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 删除执行
+# ═══════════════════════════════════════════════════════════════════════════
+
+def execute_deletion(
+    to_delete: List[Tuple[Path, int]],
+    logger: logging.Logger,
+) -> Tuple[int, int, List[str]]:
+    """执行删除操作。
+
+    先删文件（按路径排序），再删目录（按深度降序——子目录先于父目录）。
+
+    Args:
+        to_delete: 待删除项列表
+        logger: 日志记录器
+
+    Returns:
+        (成功数, 失败数, 失败详情列表)
+    """
+    # 分离文件和目录
+    files = [(p, s) for p, s in to_delete if p.is_file()]
+    dirs = [(p, s) for p, s in to_delete if p.is_dir()]
+
+    # 目录按深度降序：子目录更深，先删
+    dirs.sort(key=lambda x: -len(x[0].as_posix().split("/")))
+
+    success = 0
+    failed = 0
+    errors: List[str] = []
+
+    # ── 先删文件 ──
+    for p, size in files:
+        try:
+            p.unlink()
+            logger.info(f"  ✓ 已删除文件: {_rel_path(p)}")
+            success += 1
+        except OSError as e:
+            logger.error(f"  ✗ 删除失败: {_rel_path(p)} — {e}")
+            failed += 1
+            errors.append(f"{_rel_path(p)}: {e}")
+
+    # ── 再删目录 ──
+    for p, _ in dirs:
+        try:
+            if p.exists():
+                p.rmdir()
+                logger.info(f"  ✓ 已删除目录: {_rel_path(p)}")
+                success += 1
+        except OSError as e:
+            logger.warning(f"  ⚠ 目录非空或删除失败: {_rel_path(p)} — {e}")
+            failed += 1
+            errors.append(f"{_rel_path(p)}: {e}")
+
+    return success, failed, errors
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CLI 主入口
+# ═══════════════════════════════════════════════════════════════════════════
+
+def build_parser() -> argparse.ArgumentParser:
+    """构建命令行参数解析器。"""
+    parser = argparse.ArgumentParser(
+        description="ODPlatform 项目重置工具 —— 将项目恢复到初始化状态",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python scripts/reset_project.py --level logs
+  python scripts/reset_project.py --level runtime --dry-run
+  python scripts/reset_project.py --level full --yes
+        """,
+    )
+    parser.add_argument(
+        "--level",
+        required=True,
+        choices=["logs", "runtime", "full"],
+        help="重置级别: logs=仅日志, runtime=日志+数据+模型+训练产物, full=全部+重新初始化",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="预览模式，仅列出将删除的内容，不执行任何删除",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="跳过确认提示，直接执行（适用于 CI/脚本化）",
+    )
+    return parser
+
+
+def main() -> None:
+    """主入口。"""
+    parser = build_parser()
+    args = parser.parse_args()
+
+    # ── 1. 初始化日志（必须在删除操作之前） ──
+    logger = get_logger(
+        base_path=LOGGING_DIR,
+        log_type="Reset_project",
+        temp_log=False,
+    )
+    logger.info("=" * LINE_WIDTH)
+    logger.info("ODPlatform 项目重置工具".center(LINE_WIDTH))
+    logger.info(f"级别: {args.level} | 模式: {'预览' if args.dry_run else '执行'} | 跳过确认: {'是' if args.yes else '否'}")
+    logger.info("=" * LINE_WIDTH)
+
+    # ── 2. 收集 ──
+    logger.info("")
+    logger.info("[阶段 1/4] 扫描可删除项...")
+    to_delete, protected = collect_deletable(args.level, logger)
+
+    # ── 3. 显示摘要 ──
+    logger.info("")
+    logger.info("[阶段 2/4] 生成删除摘要...")
+    display_summary(to_delete, protected, args.level, args.dry_run, logger)
+
+    if not to_delete:
+        logger.info("没有需要清理的内容。")
+        if args.level == "full":
+            logger.info("但仍将运行初始化以确保目录结构完整...")
+            initialize_project()
+        return
+
+    # ── 4. dry-run 到此结束 ──
+    if args.dry_run:
+        logger.info("")
+        logger.info("[预览模式] 以上内容不会被实际删除。移除 --dry-run 以执行。")
+        return
+
+    # ── 5. 确认 ──
+    logger.info("")
+    logger.info("[阶段 3/4] 等待用户确认...")
+    if not confirm_action(args.yes):
+        logger.info("已取消操作，未做任何更改。")
+        return
+
+    # ── 6. 执行删除 ──
+    logger.info("")
+    logger.info("[阶段 4/4] 执行删除...")
+    logger.info("-" * LINE_WIDTH)
+    success, failed, errors = execute_deletion(to_delete, logger)
+
+    # ── 7. (仅 full) 重新初始化 ──
+    if args.level == "full":
+        logger.info("")
+        logger.info("=" * LINE_WIDTH)
+        logger.info("重新初始化项目...".center(LINE_WIDTH))
+        logger.info("=" * LINE_WIDTH)
+        try:
+            initialize_project()
+        except Exception as e:
+            logger.error(f"重新初始化失败: {e}")
+            logger.error("请手动运行: python scripts/init_project.py")
+            sys.exit(1)
+
+    # ── 8. 输出汇总 ──
+    logger.info("")
+    logger.info("=" * LINE_WIDTH)
+    logger.info("重置完成".center(LINE_WIDTH))
+    logger.info(f"  成功: {success} 项")
+    if failed:
+        logger.warning(f"  失败: {failed} 项")
+        for err in errors:
+            logger.warning(f"    - {err}")
+    logger.info("=" * LINE_WIDTH)
+
+
+if __name__ == "__main__":
+    main()
