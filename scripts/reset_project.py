@@ -1,12 +1,13 @@
-"""项目重置工具 —— 将项目恢复到初始化状态。
+"""项目重置工具 —— 清理运行时产物，可选重新初始化。
 
 用法:
     python scripts/reset_project.py --level logs
     python scripts/reset_project.py --level runtime --dry-run
-    python scripts/reset_project.py --level full --yes
+    python scripts/reset_project.py --level full --yes --reinit
 
 安全设计:
-    - 硬编码白名单：源码、ADR、配置文件不可删除
+    - 硬编码白名单：源码、ADR、配置文件、初始化日志不可删除
+    - 删除与重新初始化分为两个独立步骤
     - 交互确认：默认显示摘要并要求输入 yes
     - --dry-run：预览模式，只列不删
 """
@@ -99,6 +100,9 @@ WHITELIST: List[Tuple[str, str]] = [
     # ── IDE 配置（虽然 .gitignore 了，但如果在就要保护） ──
     ("exact", ".idea"),
     ("exact", ".vscode"),
+
+    # ── 初始化脚本运行日志（保留以供审计） ──
+    ("prefix", "apps/platform/logging/Init_project"),
 ]
 
 
@@ -180,7 +184,7 @@ def _collect_dir_contents(
 
     for p in sorted(dir_path.rglob("*")):
         if is_protected(p):
-            logger.warning(f"  ⚠ 跳过受保护项: {_rel_path(p)}")
+            logger.warning(f"  [!] 跳过受保护项: {_rel_path(p)}")
             continue
         if p.is_file():
             files.append((p, p.stat().st_size))
@@ -423,10 +427,10 @@ def execute_deletion(
     for p, size in files:
         try:
             p.unlink()
-            logger.info(f"  ✓ 已删除文件: {_rel_path(p)}")
+            logger.info(f"  [OK] 已删除文件: {_rel_path(p)}")
             success += 1
         except OSError as e:
-            logger.error(f"  ✗ 删除失败: {_rel_path(p)} — {e}")
+            logger.error(f"  [FAIL] 删除失败: {_rel_path(p)} — {e}")
             failed += 1
             errors.append(f"{_rel_path(p)}: {e}")
 
@@ -435,10 +439,10 @@ def execute_deletion(
         try:
             if p.exists():
                 p.rmdir()
-                logger.info(f"  ✓ 已删除目录: {_rel_path(p)}")
+                logger.info(f"  [OK] 已删除目录: {_rel_path(p)}")
                 success += 1
         except OSError as e:
-            logger.warning(f"  ⚠ 目录非空或删除失败: {_rel_path(p)} — {e}")
+            logger.warning(f"  [!] 目录非空或删除失败: {_rel_path(p)} — {e}")
             failed += 1
             errors.append(f"{_rel_path(p)}: {e}")
 
@@ -452,19 +456,19 @@ def execute_deletion(
 def build_parser() -> argparse.ArgumentParser:
     """构建命令行参数解析器。"""
     parser = argparse.ArgumentParser(
-        description="ODPlatform 项目重置工具 —— 将项目恢复到初始化状态",
+        description="ODPlatform 项目重置工具 —— 清理运行时产物，可选重新初始化",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
   python scripts/reset_project.py --level logs
   python scripts/reset_project.py --level runtime --dry-run
-  python scripts/reset_project.py --level full --yes
+  python scripts/reset_project.py --level full --yes --reinit
         """,
     )
     parser.add_argument(
         "--level",
         choices=["logs", "runtime", "full"],
-        help="重置级别: logs=仅日志, runtime=日志+数据+模型+训练产物, full=全部+重新初始化（不指定则交互选择）",
+        help="清理级别: logs=仅日志, runtime=日志+数据+模型+训练产物, full=全部清理（不指定则交互选择）",
     )
     parser.add_argument(
         "--dry-run",
@@ -475,6 +479,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         help="跳过确认提示，直接执行（适用于 CI/脚本化）",
+    )
+    parser.add_argument(
+        "--reinit",
+        action="store_true",
+        help="删除后自动重新初始化项目目录（CLI 模式下配合 --yes 使用）",
     )
     return parser
 
@@ -497,16 +506,17 @@ def _interactive_select_level(logger: logging.Logger) -> Optional[str]:
     logger.info("  ODPlatform 项目重置工具")
     logger.info("=" * 60)
     logger.info("")
-    logger.info("  请选择重置级别:")
+    logger.info("  请选择清理级别:")
     logger.info("")
     logger.info("    A — 仅清理日志文件")
-    logger.info("        删除 apps/platform/logging/ 下的所有 .log 文件")
+    logger.info("        删除 apps/platform/logging/ 下的 .log 文件")
+    logger.info("        （保留 Init_project 初始化日志）")
     logger.info("")
     logger.info("    B — 清理日志 + 运行时产物")
     logger.info("        删除日志 + data/ + models/ + runs/ + configs/")
     logger.info("")
-    logger.info("    C — 完整重置")
-    logger.info("        删除以上全部 + 自动重新初始化项目")
+    logger.info("    C — 全部清理")
+    logger.info("        删除以上全部可删除内容")
     logger.info("")
     logger.info("    Q — 退出")
     logger.info("")
@@ -517,6 +527,9 @@ def _interactive_select_level(logger: logging.Logger) -> Optional[str]:
     logger.info("    · 测试: tests/, apps/platform/tests/")
     logger.info("    · 脚本: scripts/")
     logger.info("    · 配置: pyproject.toml, .odp-workspace, .gitignore, README.md")
+    logger.info("    · 初始化日志: apps/platform/logging/Init_project/")
+    logger.info("-" * 60)
+    logger.info("  提示: 清理完成后可选择是否重新初始化项目目录。")
     logger.info("-" * 60)
 
     while True:
@@ -590,9 +603,7 @@ def _run_reset(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     if not to_delete:
         logger.info("没有需要清理的内容。")
-        if level == "full":
-            logger.info("但仍将运行初始化以确保目录结构完整...")
-            initialize_project()
+        _maybe_reinitialize(args, logger)
         return
 
     # ── 4. dry-run 到此结束 ──
@@ -614,7 +625,6 @@ def _run_reset(args: argparse.Namespace, logger: logging.Logger) -> None:
     logger.info("-" * LINE_WIDTH)
 
     # 关闭所有 FileHandler，释放当前日志文件的句柄
-    # （Windows 不允许删除被进程持有的文件，控制台 handler 保留）
     file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
     for fh in file_handlers:
         logger.removeHandler(fh)
@@ -634,55 +644,66 @@ def _run_reset(args: argparse.Namespace, logger: logging.Logger) -> None:
         logger.warning("  重新运行相同命令即可安全完成清理。")
         logger.warning("=" * LINE_WIDTH)
 
-    if interrupted:
-        # 被中断时仍需尝试重新初始化（full 级别）— 目录可能已经部分删除
-        if level == "full":
-            logger.info("")
-            logger.info("尽管被中断，仍将尝试重新初始化项目...")
-            try:
-                initialize_project()
-                logger.info("重新初始化完成。")
-            except KeyboardInterrupt:
-                logger.warning("初始化也被中断。请手动运行: python scripts/init_project.py")
-                return
-            except Exception as e:
-                logger.error(f"重新初始化失败: {e}")
-                logger.error("请手动运行: python scripts/init_project.py")
-                return
-        # 输出中断时的部分结果
-        logger.info("")
-        logger.info(f"  已删除: {success} 项 | 失败: {failed} 项")
-        if errors:
-            for err in errors:
-                logger.warning(f"    - {err}")
-        return
-
-    # ── 7. (仅 full) 重新初始化 ──
-    if level == "full":
-        logger.info("")
-        logger.info("=" * LINE_WIDTH)
-        logger.info("重新初始化项目...".center(LINE_WIDTH))
-        logger.info("=" * LINE_WIDTH)
-        try:
-            initialize_project()
-        except KeyboardInterrupt:
-            logger.warning("初始化被中断。请手动运行: python scripts/init_project.py")
-            return
-        except Exception as e:
-            logger.error(f"重新初始化失败: {e}")
-            logger.error("请手动运行: python scripts/init_project.py")
-            sys.exit(1)
-
-    # ── 8. 输出汇总 ──
+    # ── 7. 输出汇总 ──
     logger.info("")
     logger.info("=" * LINE_WIDTH)
-    logger.info("重置完成".center(LINE_WIDTH))
+    logger.info("清理完成".center(LINE_WIDTH))
     logger.info(f"  成功: {success} 项")
     if failed:
         logger.warning(f"  失败: {failed} 项")
         for err in errors:
             logger.warning(f"    - {err}")
     logger.info("=" * LINE_WIDTH)
+
+    if interrupted:
+        return
+
+    # ── 8. 重新初始化（独立的可选步骤） ──
+    _maybe_reinitialize(args, logger)
+
+
+def _maybe_reinitialize(args: argparse.Namespace, logger: logging.Logger) -> None:
+    """询问用户是否重新初始化项目目录。
+
+    CLI 模式: --reinit 标志控制；交互模式: 提示用户选择。
+    """
+    do_reinit = False
+
+    if args.reinit:
+        # CLI 明确指定
+        do_reinit = True
+    elif not args.yes:
+        # 交互模式：询问用户
+        try:
+            response = input("\n  是否重新初始化项目目录？[yes/no]: ").strip().lower()
+            if response == "yes":
+                do_reinit = True
+            elif response == "no":
+                logger.info("  跳过重新初始化。")
+                logger.info("  可稍后手动运行: python scripts/init_project.py")
+            else:
+                logger.info(f"  无效输入，跳过重新初始化。")
+                logger.info("  可稍后手动运行: python scripts/init_project.py")
+        except (KeyboardInterrupt, EOFError):
+            logger.info("")
+            logger.info("  已取消，跳过重新初始化。")
+            return
+
+    if not do_reinit:
+        return
+
+    logger.info("")
+    logger.info("=" * LINE_WIDTH)
+    logger.info("重新初始化项目...".center(LINE_WIDTH))
+    logger.info("=" * LINE_WIDTH)
+    try:
+        initialize_project()
+        logger.info("重新初始化完成。")
+    except KeyboardInterrupt:
+        logger.warning("初始化被中断。请手动运行: python scripts/init_project.py")
+    except Exception as e:
+        logger.error(f"重新初始化失败: {e}")
+        logger.error("请手动运行: python scripts/init_project.py")
 
 
 if __name__ == "__main__":
