@@ -553,6 +553,20 @@ def main() -> None:
     logger.info("ODPlatform 项目重置工具".center(LINE_WIDTH))
     logger.info("=" * LINE_WIDTH)
 
+    try:
+        _run_reset(args, logger)
+    except KeyboardInterrupt:
+        logger.warning("")
+        logger.warning("=" * LINE_WIDTH)
+        logger.warning("  用户中断 (Ctrl+C) — 操作未完成".center(LINE_WIDTH))
+        logger.warning("=" * LINE_WIDTH)
+        logger.warning("  重置工具是幂等的，重新运行相同命令即可安全完成。")
+        logger.warning("=" * LINE_WIDTH)
+
+
+def _run_reset(args: argparse.Namespace, logger: logging.Logger) -> None:
+    """执行重置流程的核心逻辑。"""
+
     # ── 2. 确定重置级别（命令行指定 或 交互选择） ──
     level = args.level
     if level is None:
@@ -606,7 +620,42 @@ def main() -> None:
         logger.removeHandler(fh)
         fh.close()
 
-    success, failed, errors = execute_deletion(to_delete, logger)
+    interrupted = False
+    success, failed, errors = 0, 0, []
+    try:
+        success, failed, errors = execute_deletion(to_delete, logger)
+    except KeyboardInterrupt:
+        interrupted = True
+        logger.warning("")
+        logger.warning("=" * LINE_WIDTH)
+        logger.warning("  用户中断 (Ctrl+C) — 删除操作未完成".center(LINE_WIDTH))
+        logger.warning("=" * LINE_WIDTH)
+        logger.warning("  部分文件可能已被删除，但操作是幂等的：")
+        logger.warning("  重新运行相同命令即可安全完成清理。")
+        logger.warning("=" * LINE_WIDTH)
+
+    if interrupted:
+        # 被中断时仍需尝试重新初始化（full 级别）— 目录可能已经部分删除
+        if level == "full":
+            logger.info("")
+            logger.info("尽管被中断，仍将尝试重新初始化项目...")
+            try:
+                initialize_project()
+                logger.info("重新初始化完成。")
+            except KeyboardInterrupt:
+                logger.warning("初始化也被中断。请手动运行: python scripts/init_project.py")
+                return
+            except Exception as e:
+                logger.error(f"重新初始化失败: {e}")
+                logger.error("请手动运行: python scripts/init_project.py")
+                return
+        # 输出中断时的部分结果
+        logger.info("")
+        logger.info(f"  已删除: {success} 项 | 失败: {failed} 项")
+        if errors:
+            for err in errors:
+                logger.warning(f"    - {err}")
+        return
 
     # ── 7. (仅 full) 重新初始化 ──
     if level == "full":
@@ -616,6 +665,9 @@ def main() -> None:
         logger.info("=" * LINE_WIDTH)
         try:
             initialize_project()
+        except KeyboardInterrupt:
+            logger.warning("初始化被中断。请手动运行: python scripts/init_project.py")
+            return
         except Exception as e:
             logger.error(f"重新初始化失败: {e}")
             logger.error("请手动运行: python scripts/init_project.py")
