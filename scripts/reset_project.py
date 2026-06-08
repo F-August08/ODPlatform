@@ -251,3 +251,130 @@ def collect_deletable(
                 to_delete.append((dir_path, 0))
 
     return to_delete, protected
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 显示与确认
+# ═══════════════════════════════════════════════════════════════════════════
+
+LINE_WIDTH: int = 80
+
+
+def _fmt_size(size_bytes: int) -> str:
+    """人类可读的文件大小。"""
+    if size_bytes == 0:
+        return "0 B"
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TiB"
+
+
+def display_summary(
+    to_delete: List[Tuple[Path, int]],
+    protected: List[Tuple[Path, str]],
+    level: str,
+    dry_run: bool,
+    logger: logging.Logger,
+) -> None:
+    """显示删除摘要。
+
+    Args:
+        to_delete: 待删除项列表
+        protected: 受保护项列表
+        level: 重置级别
+        dry_run: 是否为预览模式
+        logger: 日志记录器
+    """
+    mode = "预览模式 (--dry-run)" if dry_run else "执行模式"
+    header = f" 项目重置摘要 (级别: {level}, {mode}) "
+    logger.info("=" * LINE_WIDTH)
+    logger.info(header.center(LINE_WIDTH, "="))
+    logger.info(f"项目根目录: {ROOT_DIR}")
+    logger.info("-" * LINE_WIDTH)
+
+    if not to_delete and not protected:
+        logger.info("  没有需要清理的内容，项目已处于干净状态。")
+        return
+
+    # ── 待删除 ──
+    if to_delete:
+        total_files = sum(1 for p, s in to_delete if s > 0 or p.is_file())
+        total_dirs = sum(1 for p, s in to_delete if s == 0 and p.is_dir())
+        total_size = sum(s for _, s in to_delete)
+
+        logger.info("")
+        logger.info(f"  ▶ 将删除:")
+        logger.info(f"    文件: {total_files} 个")
+        logger.info(f"    目录: {total_dirs} 个")
+        logger.info(f"    总大小: {_fmt_size(total_size)}")
+        logger.info("")
+        logger.info("  详细列表:")
+
+        # 按类别分组显示
+        categories = {
+            "日志文件": lambda p: p.suffix == ".log",
+            "数据目录": lambda p: str(DATA_DIR) in str(p),
+            "模型目录": lambda p: str(MODELS_DIR) in str(p),
+            "训练产物": lambda p: str(RUNS_DIR) in str(p),
+            "配置目录": lambda p: str(CONFIGS_DIR) in str(p),
+        }
+
+        shown: Set[Path] = set()
+        for cat_name, cat_filter in categories.items():
+            cat_items = [
+                (p, s) for p, s in to_delete if cat_filter(p) and p not in shown
+            ]
+            if not cat_items:
+                continue
+            logger.info(f"    [{cat_name}]")
+            for p, s in cat_items:
+                rel = _rel_path(p)
+                logger.info(f"      {rel}  ({_fmt_size(s)})")
+                shown.add(p)
+
+        # 未归类的
+        uncat = [(p, s) for p, s in to_delete if p not in shown]
+        if uncat:
+            logger.info(f"    [其他]")
+            for p, s in uncat:
+                logger.info(f"      {_rel_path(p)}  ({_fmt_size(s)})")
+
+    # ── 受保护（跳过的） ──
+    if protected:
+        logger.info("")
+        logger.info(f"  ⊘ 将保留 (受白名单保护): {len(protected)} 项")
+        # 只显示目录级别的受保护项摘要
+        protected_dirs: Set[str] = set()
+        for p, _ in protected:
+            protected_dirs.add(_rel_path(p))
+        # 取每个顶层目录
+        top_dirs: Set[str] = set()
+        for d in sorted(protected_dirs):
+            parts = d.split("/")
+            if len(parts) >= 1:
+                top_dirs.add(parts[0] if len(parts) == 1 else "/".join(parts[:2]))
+        for d in sorted(top_dirs):
+            logger.info(f"    {d}/  (及其所有内容)")
+
+    logger.info("-" * LINE_WIDTH)
+
+
+def confirm_action(skip_prompt: bool) -> bool:
+    """请求用户确认。
+
+    Args:
+        skip_prompt: True 则跳过提示直接返回 True
+
+    Returns:
+        True 表示用户确认继续
+    """
+    if skip_prompt:
+        return True
+    try:
+        response = input("\n  输入 'yes' 确认执行删除: ").strip()
+        return response == "yes"
+    except (KeyboardInterrupt, EOFError):
+        print("\n  已取消。")
+        return False
