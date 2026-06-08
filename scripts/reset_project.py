@@ -361,11 +361,12 @@ def display_summary(
     logger.info("-" * LINE_WIDTH)
 
 
-def confirm_action(skip_prompt: bool) -> bool:
+def confirm_action(skip_prompt: bool, logger: logging.Logger) -> bool:
     """请求用户二次确认。
 
     Args:
         skip_prompt: True 则跳过提示直接返回 True
+        logger: 日志记录器
 
     Returns:
         True 表示用户确认继续，False 表示取消
@@ -377,13 +378,14 @@ def confirm_action(skip_prompt: bool) -> bool:
         if response == "yes":
             return True
         elif response == "no":
-            print("  已撤销，未做任何更改。")
+            logger.info("  已撤销，未做任何更改。")
             return False
         else:
-            print(f"  无效输入 '{response}'，请输入 yes 或 no。操作已取消。")
+            logger.warning(f"  无效输入 '{response}'，请输入 yes 或 no。操作已取消。")
             return False
     except (KeyboardInterrupt, EOFError):
-        print("\n  已取消。")
+        logger.info("")
+        logger.info("  已取消。")
         return False
 
 
@@ -481,44 +483,47 @@ def build_parser() -> argparse.ArgumentParser:
 # 交互式级别选择
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _interactive_select_level() -> Optional[str]:
+def _interactive_select_level(logger: logging.Logger) -> Optional[str]:
     """交互式选择重置级别。
+
+    Args:
+        logger: 日志记录器
 
     Returns:
         "logs" | "runtime" | "full" | None (用户取消)
     """
-    print()
-    print("=" * 60)
-    print("  ODPlatform 项目重置工具")
-    print("=" * 60)
-    print()
-    print("  请选择重置级别:")
-    print()
-    print("    A — 仅清理日志文件")
-    print("        删除 apps/platform/logging/ 下的所有 .log 文件")
-    print()
-    print("    B — 清理日志 + 运行时产物")
-    print("        删除日志 + data/ + models/ + runs/ + configs/")
-    print()
-    print("    C — 完整重置")
-    print("        删除以上全部 + 自动重新初始化项目")
-    print()
-    print("    Q — 退出")
-    print()
-    print("-" * 60)
-    print("  [!] 白名单保护（无论选择哪种级别，以下内容均不可删除）:")
-    print("    · 源码: apps/*/src/, packages/")
-    print("    · 文档: docs/ (含架构决策记录 ADR)")
-    print("    · 测试: tests/, apps/platform/tests/")
-    print("    · 脚本: scripts/")
-    print("    · 配置: pyproject.toml, .odp-workspace, .gitignore, README.md")
-    print("-" * 60)
+    logger.info("")
+    logger.info("=" * 60)
+    logger.info("  ODPlatform 项目重置工具")
+    logger.info("=" * 60)
+    logger.info("")
+    logger.info("  请选择重置级别:")
+    logger.info("")
+    logger.info("    A — 仅清理日志文件")
+    logger.info("        删除 apps/platform/logging/ 下的所有 .log 文件")
+    logger.info("")
+    logger.info("    B — 清理日志 + 运行时产物")
+    logger.info("        删除日志 + data/ + models/ + runs/ + configs/")
+    logger.info("")
+    logger.info("    C — 完整重置")
+    logger.info("        删除以上全部 + 自动重新初始化项目")
+    logger.info("")
+    logger.info("    Q — 退出")
+    logger.info("")
+    logger.info("-" * 60)
+    logger.info("  [!] 白名单保护（无论选择哪种级别，以下内容均不可删除）:")
+    logger.info("    · 源码: apps/*/src/, packages/")
+    logger.info("    · 文档: docs/ (含架构决策记录 ADR)")
+    logger.info("    · 测试: tests/, apps/platform/tests/")
+    logger.info("    · 脚本: scripts/")
+    logger.info("    · 配置: pyproject.toml, .odp-workspace, .gitignore, README.md")
+    logger.info("-" * 60)
 
     while True:
         try:
             choice = input("  请输入 [A/B/C/Q]: ").strip().upper()
         except (KeyboardInterrupt, EOFError):
-            print("\n")
+            logger.info("")
             return None
 
         if choice == "A":
@@ -530,21 +535,13 @@ def _interactive_select_level() -> Optional[str]:
         elif choice == "Q":
             return None
         else:
-            print(f"  无效选项 '{choice}'，请输入 A、B、C 或 Q")
+            logger.warning(f"  无效选项 '{choice}'，请输入 A、B、C 或 Q")
 
 
 def main() -> None:
     """主入口。"""
     parser = build_parser()
     args = parser.parse_args()
-
-    # ── 0. 确定重置级别（命令行指定 或 交互选择） ──
-    level = args.level
-    if level is None:
-        level = _interactive_select_level()
-        if level is None:
-            print("已取消。")
-            return
 
     # ── 1. 初始化日志（必须在删除操作之前） ──
     logger = get_logger(
@@ -554,6 +551,16 @@ def main() -> None:
     )
     logger.info("=" * LINE_WIDTH)
     logger.info("ODPlatform 项目重置工具".center(LINE_WIDTH))
+    logger.info("=" * LINE_WIDTH)
+
+    # ── 2. 确定重置级别（命令行指定 或 交互选择） ──
+    level = args.level
+    if level is None:
+        level = _interactive_select_level(logger)
+        if level is None:
+            logger.info("已取消。")
+            return
+
     logger.info(f"级别: {level} | 模式: {'预览' if args.dry_run else '执行'} | 跳过确认: {'是' if args.yes else '否'}")
     logger.info("=" * LINE_WIDTH)
 
@@ -583,7 +590,7 @@ def main() -> None:
     # ── 5. 确认 ──
     logger.info("")
     logger.info("[阶段 3/4] 等待用户确认...")
-    if not confirm_action(args.yes):
+    if not confirm_action(args.yes, logger):
         logger.info("已取消操作，未做任何更改。")
         return
 
