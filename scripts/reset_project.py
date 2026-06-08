@@ -131,3 +131,123 @@ def is_protected(path: Path) -> bool:
             if fnmatch.fnmatch(rel, pattern):
                 return True
     return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 可删除项收集
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── 各级别对应的可删除目录列表 ──
+RUNTIME_DELETABLE_DIRS: List[Path] = [
+    DATA_DIR,
+    MODELS_DIR,
+    RUNS_DIR,
+    CONFIGS_DIR,
+]
+
+
+def _collect_log_files(logger: logging.Logger) -> List[Tuple[Path, int]]:
+    """收集 LOGGING_DIR 下所有 .log 文件。
+
+    Returns:
+        [(文件路径, 文件大小字节数), ...] 按路径排序
+    """
+    files: List[Tuple[Path, int]] = []
+    if not LOGGING_DIR.exists():
+        return files
+    for p in sorted(LOGGING_DIR.rglob("*.log")):
+        if p.is_file():
+            size = p.stat().st_size
+            files.append((p, size))
+    logger.info(f"  扫描日志目录: {len(files)} 个 .log 文件")
+    return files
+
+
+def _collect_dir_contents(
+    dir_path: Path, logger: logging.Logger
+) -> List[Tuple[Path, int]]:
+    """递归收集目录下所有可删除的文件和子目录。
+
+    跳过白名单保护项。返回 [(路径, 大小), ...]，目录大小为 0。
+    返回列表按 "文件在前、目录在后" 排序（删除时先文件后目录）。
+    rglob("*") 同时返回文件和目录（包括空目录）。
+    """
+    if not dir_path.exists():
+        return []
+
+    files: List[Tuple[Path, int]] = []
+    dirs: List[Tuple[Path, int]] = []
+
+    for p in sorted(dir_path.rglob("*")):
+        if is_protected(p):
+            logger.warning(f"  ⚠ 跳过受保护项: {_rel_path(p)}")
+            continue
+        if p.is_file():
+            files.append((p, p.stat().st_size))
+        elif p.is_dir():
+            dirs.append((p, 0))
+
+    # 文件按路径排序；目录按深度降序（子目录先于父目录）
+    files.sort(key=lambda x: x[0].as_posix())
+    dirs.sort(key=lambda x: -len(x[0].as_posix().split("/")))
+
+    return files + dirs
+
+
+def collect_deletable(
+    level: str, logger: logging.Logger
+) -> Tuple[List[Tuple[Path, int]], List[Tuple[Path, str]]]:
+    """根据级别收集所有可删除项。
+
+    Args:
+        level: "logs" | "runtime" | "full"
+        logger: 日志记录器
+
+    Returns:
+        (待删除列表, 受保护跳过列表)
+        待删除列表: [(路径, 字节大小), ...]
+        受保护列表: [(路径, 原因), ...]
+    """
+    to_delete: List[Tuple[Path, int]] = []
+    protected: List[Tuple[Path, str]] = []
+
+    if level == "logs":
+        # ── 仅日志文件 ──
+        log_files = _collect_log_files(logger)
+        for p, size in log_files:
+            if is_protected(p):
+                protected.append((p, "白名单保护"))
+            else:
+                to_delete.append((p, size))
+
+    elif level == "runtime":
+        # ── 日志文件 + 运行时产物目录内容 ──
+        log_files = _collect_log_files(logger)
+        for p, size in log_files:
+            if is_protected(p):
+                protected.append((p, "白名单保护"))
+            else:
+                to_delete.append((p, size))
+
+        for dir_path in RUNTIME_DELETABLE_DIRS:
+            if not dir_path.exists():
+                continue
+            items = _collect_dir_contents(dir_path, logger)
+            to_delete.extend(items)
+
+    elif level == "full":
+        # ── 日志目录全部内容（含日志文件，避免与 _collect_log_files 重复） ──
+        if LOGGING_DIR.exists():
+            logging_items = _collect_dir_contents(LOGGING_DIR, logger)
+            to_delete.extend(logging_items)
+
+        # ── 运行时产物目录内容 + 目录本身 ──
+        for dir_path in RUNTIME_DELETABLE_DIRS:
+            if not dir_path.exists():
+                continue
+            items = _collect_dir_contents(dir_path, logger)
+            to_delete.extend(items)
+            if not is_protected(dir_path):
+                to_delete.append((dir_path, 0))
+
+    return to_delete, protected
