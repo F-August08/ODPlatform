@@ -103,6 +103,9 @@ WHITELIST: List[Tuple[str, str]] = [
 
     # ── 重置操作审计日志（保留每次删除操作的记录） ──
     ("prefix", "apps/platform/logging/Reset_project"),
+
+    # ── 预训练模型权重（下载获取，非运行时生成） ──
+    ("prefix", "models/pretrained"),
 ]
 
 
@@ -528,6 +531,7 @@ def _interactive_select_level(logger: logging.Logger) -> Optional[str]:
     logger.info("    · 脚本: scripts/")
     logger.info("    · 配置: pyproject.toml, .odp-workspace, .gitignore, README.md")
     logger.info("    · 审计日志: apps/platform/logging/Reset_project/")
+    logger.info("    · 预训练模型: models/pretrained/")
     logger.info("-" * 60)
     logger.info("  提示: 清理完成后可选择是否重新初始化项目目录。")
     logger.info("-" * 60)
