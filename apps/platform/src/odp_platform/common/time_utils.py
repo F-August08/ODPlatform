@@ -83,12 +83,14 @@ def time_it(
                 min_t = min(times)
                 max_t = max(times)
                 stdev_t = statistics.stdev(times)
+                total_t = sum(times)
 
                 log.info(f"  {'─' * 40}")
                 log.info(f"  平均耗时:  {mean_t:.4f}s ({mean_t*1000:.2f}ms)")
                 log.info(f"  最小耗时:  {min_t:.4f}s ({min_t*1000:.2f}ms)")
                 log.info(f"  最大耗时:  {max_t:.4f}s ({max_t*1000:.2f}ms)")
                 log.info(f"  标准差:    {stdev_t:.4f}s")
+                log.info(f"  总耗时:    {total_t:.4f}s ({total_t*1000:.2f}ms)")
 
             log.info("=" * LINE_WIDTH)
             return result

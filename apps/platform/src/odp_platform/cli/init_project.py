@@ -5,11 +5,13 @@ import logging
 from odp_platform.common.paths import ROOT_DIR, get_dirs_to_initialize, LOGGING_DIR,RAW_DATA_DIR
 from odp_platform.common.logging_utils import get_logger
 from odp_platform.common.string_utils import format_table_row, format_table_separator
+from odp_platform.common.system_utils import log_system_info
 from odp_platform.common.time_utils import time_it
 
 LINE_WIDTH: int = 80
 
 logger = logging.getLogger(__name__)
+_snapshot_taken: bool = False
 
 def _check_raw_data_status() -> List[str]:
     raw_status: List[str] = []
@@ -36,13 +38,18 @@ def _check_raw_data_status() -> List[str]:
             raw_status.append(f"    * {sub.name}")
     return raw_status
 
-@time_it(iterations=10, name='项目初始化', logger_instance=logger)
+@time_it(iterations=1, name='项目初始化', logger_instance=logger)
 def initialize_project() -> None:
     get_logger(
         base_path=LOGGING_DIR,
         log_type="Init_project",
         temp_log=False
+
     )
+    global _snapshot_taken
+    if not _snapshot_taken:
+        log_system_info(logger)
+        _snapshot_taken = True
     logger.info(f"开始初始化项目核心目录".center(LINE_WIDTH, "="))
     logger.info(f"项目的根目录为: {ROOT_DIR}")
 
