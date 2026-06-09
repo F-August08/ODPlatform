@@ -35,10 +35,13 @@ classifiers = [
 # 运行时的依赖
 dependencies = [
     "colorlog>=6.10.1",
+    "defusedxml>=0.7.1",
     "psutil>=7.2.2",
+    "pyyaml>=6.0",
+    "scikit-learn>=1.3.0",
 ]
 
-# 可选的依赖租
+# 可选的依赖组
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
