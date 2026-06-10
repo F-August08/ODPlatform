@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import logging
+import pkgutil
+import importlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -131,20 +133,37 @@ _LAZY_INITIALIZED = False
 
 
 def _lazy_init() -> None:
-    """触发 core/*.py 被 import, 使 @register 装饰器执行注册。
+    """扫描 core/ 包, 触发其中所有模块的 @register 装饰器执行。
 
-    为什么需要延迟初始化:
-        如果 registry.py 顶部直接 `import data_pipeline.core.pascal_voc`,
-        而 pascal_voc.py 里又 `from data_pipeline.registry import register`,
+    为什么需要"延迟":
+        如果 registry.py 顶部直接 import core/* 模块,
+        而那些模块又 `from data_pipeline.registry import register`,
         就形成循环 import。把 import 推迟到首次查询时, 循环就解开了。
+
+    为什么"自动发现"而不是手写 import:
+        手写 `from .core import pascal_voc, coco, yolo` 看起来直白,
+        但每加一种格式都要回这里改一行——装饰器的"开闭原则"打了折扣。
+        用 pkgutil.iter_modules 扫描包目录, 新增 core/<format>.py 后
+        什么都不用改, 文件存在即自动注册。
+        (Flask blueprints / Django apps / pytest 插件都是这个模式)
+
+    为什么 _LAZY_INITIALIZED 要放在最后置 True:
+        如果放在 import 之前置 True (你可能这么写过),
+        import 中途抛异常时, 标志位已经是 True 但 _REGISTRY 是空的,
+        后续所有 get_converter / list_capabilities 都会静默返回空,
+        而且不会再重试。放最后的好处: 异常如实抛出, 修好环境后
+        下一次调用会重新尝试, 一旦成功就 latch 住不再重复扫描。
     """
     global _LAZY_INITIALIZED
     if _LAZY_INITIALIZED:
         return
-    _LAZY_INITIALIZED = True
 
-    # 在这里 import 所有 converter 实现文件——它们的 @register 装饰器
-    # 在 import 时执行, 自动登记到 _REGISTRY
-    # from odp_platform.data_pipeline.core import pascal_voc  # noqa: F401
-    # from odp_platform.data_pipeline.core import coco        # noqa: F401
-    # from odp_platform.data_pipeline.core import yolo        # noqa: F401
+    from odp_platform.data_pipeline import core
+
+    for module_info in pkgutil.iter_modules(core.__path__):
+        # 跳过以 _ 开头的私有/工具模块 (如 _helpers.py)
+        if module_info.name.startswith("_"):
+            continue
+        importlib.import_module(f"{core.__name__}.{module_info.name}")
+
+    _LAZY_INITIALIZED = True   # ★ 必须放在 import 全部成功之后

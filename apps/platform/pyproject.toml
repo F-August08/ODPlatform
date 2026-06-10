@@ -35,10 +35,13 @@ classifiers = [
 # 运行时的依赖
 dependencies = [
     "colorlog>=6.10.1",
+    "defusedxml>=0.7.1",
     "psutil>=7.2.2",
+    "pyyaml>=6.0",
+    "scikit-learn>=1.3.0",
 ]
 
-# 可选的依赖租
+# 可选的依赖组
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
@@ -54,6 +57,8 @@ dev = [
 # =============================================================================
 [project.scripts]
 odp-init = "odp_platform.cli.init_project:initialize_project"
+odp-reset = "odp_platform.cli.reset_project:main"
+odp-transform = "odp_platform.cli.transform_data:main"
 
 # =============================================================================
 # Hatchling 配置 (告诉它两件事: 包源码在哪、版本号从哪读)

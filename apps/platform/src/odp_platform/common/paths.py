@@ -108,6 +108,22 @@ SCRIPTS_DIR: Path = ROOT_DIR / "scripts"
 META_DIR: Path = ROOT_DIR / ".odp-meta"
 META_LOGGING_DIR: Path = META_DIR / "logs"
 
+# D3新增： 数据集配置目录 + 路径辅助函数
+DATASET_CONFIGS_DIR: Path = CONFIGS_DIR / "datasets"
+
+def raw_dataset_root(dataset_name: str) -> Path:
+    """
+    返回某个数据集的raw跟目录
+    """
+    return RAW_DATA_DIR / dataset_name
+
+def dataset_yaml_path(dataset_name: str) -> Path:
+    """
+    返回某个数据集的配置文件路径
+    """
+    return DATASET_CONFIGS_DIR / f"{dataset_name}.yaml"
+
+
 # ============================================================
 # 对外暴露的"要初始化的目录列表"
 # ============================================================
@@ -169,20 +185,19 @@ def get_dirs_to_reset() -> List[Path]:
         CONFIGS_DIR,
     ]
 
-# 绝对保护目录reset工具永远不能删除这些目录
+# 绝对保护目录 — reset 工具永远不能删除这些目录
+# 注意: is_protected() 会递归保护子目录, 所以只列叶子/精确路径, 不要列祖先
 PROTECTED_DIRS: tuple[Path, ...] = (
-    ROOT_DIR,
-    ROOT_DIR / "apps",
-    ROOT_DIR / "packages",
-    APP_DIR,
-    APP_DIR / "src",
-    SCRIPTS_DIR,
-    DOCS_DIR,
-    UNIT_TEST_DIR,
-    ROOT_DIR / ".git",
-    ROOT_DIR / ".odp-workspace",
-    META_DIR,
-    META_LOGGING_DIR
+    APP_DIR / "src",                # 源代码
+    UNIT_TEST_DIR,                  # 测试代码
+    ROOT_DIR / "packages",          # 共享包
+    SCRIPTS_DIR,                    # 脚本
+    DOCS_DIR,                       # 文档
+    ROOT_DIR / ".git",              # 版本控制
+    ROOT_DIR / ".odp-workspace",    # 工作区标记文件
+    META_DIR,                       # 元数据 (含审计日志)
+    RAW_DATA_DIR,                   # 原始数据 — 绝不删除
+    PRETRAINED_MODELS_DIR,          # 预训练权重 — 绝不删除
 )
 
 def is_protected(path: Path) -> bool:
@@ -198,7 +213,11 @@ def is_protected(path: Path) -> bool:
         protected_resolved = protected.resolve(strict=False)
         if path == protected_resolved:
             return True
+        # 保护目录是 path 的子目录 → path 是保护目录的祖先 (试图删除父目录)
         if protected_resolved.is_relative_to(path):
+            return True
+        # path 是保护目录的子目录 → path 在保护目录内部 (试图删除子目录)
+        if path.is_relative_to(protected_resolved):
             return True
     return False
 
