@@ -24,18 +24,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from odp_platform.common.performance_utils import time_it
 from odp_platform.common.paths import validation_run_dir
+from odp_platform.common.performance_utils import time_it
 from odp_platform.data_validation.registry import (
     CheckContext, CheckEntry, CheckResult, CheckSeverity, get_all_checks,
 )
 from odp_platform.data_validation.report import ValidationReport
 from odp_platform.data_validation.snapshot import build_snapshot
 
+
 logger = logging.getLogger(__name__)
 
 
-@time_it(name="run_all_checks",logger_instance=logger, iterations=1)
+@time_it(name="所有检测耗时总计",logger_instance=logger, iterations=1)
 def run_all_checks(ctx: CheckContext) -> List[CheckResult]:
     """跑全部注册的 check, 收集结果。
 
@@ -59,7 +60,7 @@ def run_all_checks(ctx: CheckContext) -> List[CheckResult]:
     _log_summary(results)
     return results
 
-
+@time_it(name=lambda entry, ctx: f"检查:【{entry.name}】", logger_instance=logger, iterations=1)
 def _safe_run_one(entry: CheckEntry, ctx: CheckContext) -> CheckResult:
     """跑单个 check, 异常包装成 ERROR — 聚合模式承诺的兑现处。
 
@@ -121,61 +122,60 @@ def _log_summary(results: List[CheckResult]) -> None:
     parts = [f"{n} {s}" for s, n in counts.items()]
     logger.info(f"check 执行完毕: {' / '.join(parts)}")
 
-
-# ============================================================
-# 端到端便捷入口 — validate_dataset
-# ============================================================
-
 def validate_dataset(
-    yaml_path: Path,
-    task_type: Optional[str] = None,
+    yaml_path:    Path,
+    task_type:    Optional[str] = None,
+    run_id:       Optional[str] = None,
+    run_dir:      Optional[Path] = None,
     write_report: bool = True,
 ) -> ValidationReport:
-    """数据集验证的端到端入口 — 构建快照 → 跑全部 check → 组装报告。
-
-    这是 data_validation 子系统的顶级 API, 供 CLI (validate_data.py) 和
-    程序化调用使用。
+    """端到端验证: 构造 snapshot → 跑 check → 包装 report → 可选写盘。
 
     Args:
         yaml_path:    数据集 yaml 文件路径
-        task_type:    任务类型 ("detect" / "segment"), None = 自动读取
-        write_report: 是否将 JSON 报告落盘到 runs/data_validation/<run_id>/
+        task_type:    'detect' / 'segment' / None (None → 读 yaml.task, 再不行 detect)
+        run_id:       手动指定运行 ID; None 表示自动用时间戳
+        run_dir:      手动指定运行目录; None 表示用 validation_run_dir(run_id)
+        write_report: 是否写 JSON 报告到 run_dir/report.json
 
     Returns:
-        ValidationReport — 含 run_id / snapshot / results / overall_severity 等
+        ValidationReport (run_dir 字段已填, 调用方可以拿 .report_path 取 JSON 位置)
     """
-    started_at = datetime.now(timezone.utc)
-    run_id = started_at.strftime("%Y%m%d_%H%M%S")
+    # ---- 解析 run_id / run_dir ----
+    resolved_run_id  = run_id  or datetime.now().strftime("%Y%m%d_%H%M%S")
+    resolved_run_dir = run_dir or (validation_run_dir(resolved_run_id) if write_report else None)
 
-    # 1. 构建快照
-    snap = build_snapshot(yaml_path, task_type=task_type)
+    if write_report and resolved_run_dir is not None:
+        resolved_run_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. 跑全部 check
-    ctx = CheckContext(yaml_path=yaml_path, snapshot=snap)
+    # ---- 跑核心流程 ----
     t0 = time.perf_counter()
-    results = run_all_checks(ctx)
+    started_iso = datetime.now(timezone.utc).isoformat()
+
+    # log_system_info()   # 端到端入口打一次设备信息, 让"慢"可归因
+    snapshot = build_snapshot(yaml_path=yaml_path, task_type=task_type)
+    ctx      = CheckContext(yaml_path=yaml_path, snapshot=snapshot)
+    results  = run_all_checks(ctx)
+
     duration = time.perf_counter() - t0
 
-    # 3. 组装报告
-    run_dir = validation_run_dir(run_id) if write_report else None
+    # ---- 包装 ValidationReport ----
     report = ValidationReport(
-        run_id=run_id,
+        run_id=resolved_run_id,
         yaml_path=yaml_path,
-        snapshot=snap,
+        snapshot=snapshot,
         results=results,
         duration_seconds=duration,
-        started_at_iso=started_at.isoformat(),
-        run_dir=run_dir,
+        started_at_iso=started_iso,
+        run_dir=resolved_run_dir,
     )
 
-    # 4. 可选: 写 JSON 报告
-    if write_report and run_dir is not None:
-        run_dir.mkdir(parents=True, exist_ok=True)
-        report_path = run_dir / "report.json"
+    # ---- 写 JSON 报告 ----
+    if write_report and resolved_run_dir is not None:
+        report_path = resolved_run_dir / "report.json"
         report_path.write_text(
-            json.dumps(report.to_dict(), ensure_ascii=False, indent=2),
+            json.dumps(report.to_dict(), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        logger.info(f"JSON 报告已写入: {report_path}")
 
     return report
