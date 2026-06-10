@@ -83,7 +83,7 @@ def _render_header(report: ValidationReport, logger: logging.Logger) -> None:
 
 def _render_dataset_summary(snapshot: DatasetSnapshot, logger: logging.Logger) -> None:
     logger.info(H2_LINE)
-    logger.info("  ▸ 数据集摘要")
+    logger.info("  > 数据集摘要")
 
     if snapshot.class_names:
         names_str = ", ".join(snapshot.class_names)
@@ -110,7 +110,7 @@ def _render_dataset_summary(snapshot: DatasetSnapshot, logger: logging.Logger) -
 
 def _render_check_overview(results: list, logger: logging.Logger) -> None:
     logger.info(H2_LINE)
-    logger.info("  ▸ 检查项一览")
+    logger.info("  > 检查项一览")
     for r in results:
         logger.info(f"    [{r.severity:7s}]  {r.name:18s}  {r.summary}")
 
@@ -121,7 +121,7 @@ def _render_check_overview(results: list, logger: logging.Logger) -> None:
 
 def _render_failure_details(failed: list, logger: logging.Logger) -> None:
     logger.info(H2_LINE)
-    logger.info("  ▸ 失败详情")
+    logger.info("  > 失败详情")
     for r in failed:
         _render_one_check_details(r, logger)
 
@@ -152,14 +152,17 @@ def _render_one_check_details(r: CheckResult, logger: logging.Logger) -> None:
                 logger.info(f"          {p}")
 
     elif r.name == "label_format":
-        kinds = det.get("error_kinds", {})
-        if kinds:
-            parts = ", ".join(f"{k}={v}" for k, v in kinds.items())
-            logger.info(f"        错误类型:  {parts}")
-        for e in det.get("errors_preview", [])[:5]:
+        error_counts = det.get("error_counts", {})
+        if error_counts:
+            nonzero = {k: v for k, v in error_counts.items() if v > 0}
+            if nonzero:
+                parts = ", ".join(f"{k}={v}" for k, v in nonzero.items())
+                logger.info(f"        错误类型分布:  {parts}")
+        for ex in det.get("bad_examples", [])[:5]:
+            fname = Path(ex["file"]).name if "file" in ex else "?"
             logger.info(
-                f"        - {Path(e['label']).name}:{e['line_no']}  "
-                f"{e['kind']}  {e['detail']}"
+                f"        - {fname}:{ex.get('line_no', '?')}  "
+                f"[{ex.get('error_type', '?')}]  {ex.get('raw_line', '')}"
             )
 
     elif r.name == "split_uniqueness" and det.get("overlaps"):
