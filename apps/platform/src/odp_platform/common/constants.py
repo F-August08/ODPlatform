@@ -111,3 +111,6 @@ STATS_MAX_IMBALANCE_RATIO: float = 50.0  # 最多类/最少非空类 实例比 >
 
 PAIR_MISSING_ERROR_RATIO: float = 0.5  # 确实缺少的图像对占比 > 0，5 此值算错误
 PAIR_MISSING_WARN_RATIO: float = 0.05  # 确实缺少的图像对占比 > 0，05 此值算提醒
+
+LABEL_FORMAT_ERROR_RATIO: float = 0.10  # 超过 10% 的标注文件有格式错误 → ERROR
+LABEL_FORMAT_WARN_RATIO:  float = 0.01  # 超过 1% → WARNING，≤1% → INFO
