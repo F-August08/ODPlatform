@@ -15,7 +15,7 @@ from odp_platform.data_validation.registry import (
     list_check_names,
 )
 
-from odp_platform.data_validation.service import run_all_checks
+from odp_platform.data_validation.service import run_all_checks, validate_dataset
 from odp_platform.data_validation.snapshot import build_snapshot, DatasetSnapshot, SplitStats
 from odp_platform.data_validation.report import ValidationReport
 from odp_platform.data_validation.render import render_to_logger
@@ -31,6 +31,7 @@ __all__ = [
     "list_check_names",
     # -- service (调度层) --
     "run_all_checks",
+    "validate_dataset",
     # -- snapshot (数据载体) --
     "build_snapshot",
     "DatasetSnapshot",
