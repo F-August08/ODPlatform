@@ -44,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=list(SplitStrategy.all()),
         help="划分策略: random (纯随机, 默认) / stratified (主类别分层, 类别不平衡时用)",
     )
+    p.add_argument(
+        "--classes", nargs="*", default=None,
+        help="类别名列表, 空格分隔。yolo 格式必填 (如 --classes person car dog)。"
+             "pascal_voc / coco 可省略, 会自动从标注中探测。"
+             "如果 data/raw/<dataset>/classes.txt 存在, 也会自动读取。",
+    )
     return p
 
 
@@ -58,6 +64,7 @@ def main() -> int:
             val_rate=args.val_rate,
             random_state=args.random_state,
             split_strategy=args.split_strategy,
+            classes=args.classes,
         ).run()
     except FileNotFoundError as e:
         logger.error(f"数据缺失: {e}")

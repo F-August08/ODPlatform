@@ -185,20 +185,19 @@ def get_dirs_to_reset() -> List[Path]:
         CONFIGS_DIR,
     ]
 
-# 绝对保护目录reset工具永远不能删除这些目录
+# 绝对保护目录 — reset 工具永远不能删除这些目录
+# 注意: is_protected() 会递归保护子目录, 所以只列叶子/精确路径, 不要列祖先
 PROTECTED_DIRS: tuple[Path, ...] = (
-    ROOT_DIR,
-    ROOT_DIR / "apps",
-    ROOT_DIR / "packages",
-    APP_DIR,
-    APP_DIR / "src",
-    SCRIPTS_DIR,
-    DOCS_DIR,
-    UNIT_TEST_DIR,
-    ROOT_DIR / ".git",
-    ROOT_DIR / ".odp-workspace",
-    META_DIR,
-    META_LOGGING_DIR
+    APP_DIR / "src",                # 源代码
+    UNIT_TEST_DIR,                  # 测试代码
+    ROOT_DIR / "packages",          # 共享包
+    SCRIPTS_DIR,                    # 脚本
+    DOCS_DIR,                       # 文档
+    ROOT_DIR / ".git",              # 版本控制
+    ROOT_DIR / ".odp-workspace",    # 工作区标记文件
+    META_DIR,                       # 元数据 (含审计日志)
+    RAW_DATA_DIR,                   # 原始数据 — 绝不删除
+    PRETRAINED_MODELS_DIR,          # 预训练权重 — 绝不删除
 )
 
 def is_protected(path: Path) -> bool:

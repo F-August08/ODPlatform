@@ -57,6 +57,8 @@ dev = [
 # =============================================================================
 [project.scripts]
 odp-init = "odp_platform.cli.init_project:initialize_project"
+odp-reset = "odp_platform.cli.reset_project:main"
+odp-transform = "odp_platform.cli.transform_data:main"
 
 # =============================================================================
 # Hatchling 配置 (告诉它两件事: 包源码在哪、版本号从哪读)

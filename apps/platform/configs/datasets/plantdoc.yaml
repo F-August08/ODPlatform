@@ -1,0 +1,53 @@
+path: D:\Demo\python\ODplatform\data
+train: train/images
+val: val/images
+test: test/images
+nc: 30
+names:
+  0: Potato leaf early blight
+  1: grape leaf
+  2: grape leaf black rot
+  3: Bell_pepper leaf
+  4: Potato leaf
+  5: Peach leaf
+  6: Tomato leaf
+  7: Corn leaf blight
+  8: Apple Scab Leaf
+  9: Bell_pepper leaf spot
+  10: Cherry leaf
+  11: Tomato Early blight leaf
+  12: Tomato leaf bacterial spot
+  13: Apple rust leaf
+  14: Tomato leaf yellow virus
+  15: Corn Gray leaf spot
+  16: Corn rust leaf
+  17: Tomato Septoria leaf spot
+  18: Raspberry leaf
+  19: Squash Powdery mildew leaf
+  20: Tomato mold leaf
+  21: Strawberry leaf
+  22: Tomato leaf late blight
+  23: Potato leaf late blight
+  24: Tomato leaf mosaic virus
+  25: Blueberry leaf
+  26: Apple leaf
+  27: Soyabean leaf
+  28: Tomato two spotted spider mites leaf
+  29: Soybean leaf
+odp_meta:
+  dataset: plantdoc
+  source_format: pascal_voc
+  task: detect
+  created_at: '2026-06-10T10:24:45'
+  split:
+    strategy: random
+    train_rate: 0.8
+    val_rate: 0.1
+    test_rate: 0.1
+    random_state: 42
+    counts:
+      train: 2049
+      val: 256
+      test: 257
+      total: 2562
+  schema_version: 1
