@@ -22,7 +22,7 @@ from odp_platform.common.paths import (
     TRAIN_IMAGES_DIR, TRAIN_LABELS_DIR, VAL_IMAGES_DIR, VAL_LABELS_DIR,
     TEST_IMAGES_DIR, TEST_LABELS_DIR, raw_dataset_root, dataset_yaml_path,
 )
-from odp_platform.common.time_utils import time_it
+from odp_platform.common.performance_utils import time_it
 from odp_platform.common.string_utils import format_table_row, format_table_separator, get_display_width
 from odp_platform.data_pipeline.registry import ConvertOptions, get_converter
 from odp_platform.data_pipeline.service import convert_data_to_yolo

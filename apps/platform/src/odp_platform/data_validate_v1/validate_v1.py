@@ -20,8 +20,21 @@ from typing import Dict
 import yaml
 
 from odp_platform.common.constants import IMAGE_EXTENSIONS
+from odp_platform.common.paths import DATA_DIR
 
 logger = logging.getLogger(__name__)
+
+# validate() 只允许访问 DATA_DIR 及其子目录, 防止 YAML path/split 字段路径穿越
+_ALLOWED_BASE = DATA_DIR.resolve()
+
+
+def _is_within_base(target: Path) -> bool:
+    """检查 target 是否在 _ALLOWED_BASE 之内 (含自身)。"""
+    try:
+        target.resolve(strict=False).relative_to(_ALLOWED_BASE)
+        return True
+    except ValueError:
+        return False
 
 
 def validate(yaml_path: Path) -> bool:
@@ -82,6 +95,27 @@ def validate(yaml_path: Path) -> bool:
     else:
         data_root = yaml_path.parent.resolve()
 
+    # ── 沙箱: 拒绝越界访问 ──
+    if not _is_within_base(data_root):
+        logger.error(
+            f"[FAIL] 路径穿越: data_root={data_root} 不在允许范围 {_ALLOWED_BASE} 之内。"
+            f" 请检查 yaml 中 path 字段。"
+        )
+        return False
+
+    def _resolve_split_dir(split_rel: str) -> Path | None:
+        """解析并校验单个 split 目录。返回 None 表示越界。"""
+        if Path(split_rel).is_absolute():
+            d = Path(split_rel).resolve()
+        else:
+            d = (data_root / split_rel).resolve()
+        if not _is_within_base(d):
+            logger.error(
+                f"[FAIL] 路径穿越: split 目录 {d} 越界 (yaml 字段 {split_rel!r})。"
+            )
+            return None
+        return d
+
     # ============ check 2: pair_existence ============
     missing_total = 0
     images_total  = 0
@@ -89,7 +123,9 @@ def validate(yaml_path: Path) -> bool:
         split_rel = cfg.get(split)
         if not split_rel:
             continue
-        split_dir = data_root / split_rel if not Path(split_rel).is_absolute() else Path(split_rel)
+        split_dir = _resolve_split_dir(split_rel)
+        if split_dir is None:
+            return False
         if not split_dir.exists():
             continue
         for ext in IMAGE_EXTENSIONS:
@@ -115,7 +151,9 @@ def validate(yaml_path: Path) -> bool:
         split_rel = cfg.get(split)
         if not split_rel:
             continue
-        split_dir = data_root / split_rel if not Path(split_rel).is_absolute() else Path(split_rel)
+        split_dir = _resolve_split_dir(split_rel)
+        if split_dir is None:
+            return False
         if not split_dir.exists():
             continue
         for ext in IMAGE_EXTENSIONS:
@@ -165,7 +203,9 @@ def validate(yaml_path: Path) -> bool:
         split_rel = cfg.get(split)
         if not split_rel:
             continue
-        split_dir = data_root / split_rel if not Path(split_rel).is_absolute() else Path(split_rel)
+        split_dir = _resolve_split_dir(split_rel)
+        if split_dir is None:
+            return False
         if not split_dir.exists():
             continue
         stems = set()

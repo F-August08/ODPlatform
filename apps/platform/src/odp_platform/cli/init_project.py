@@ -6,7 +6,7 @@ from odp_platform.common.paths import ROOT_DIR, get_dirs_to_initialize, LOGGING_
 from odp_platform.common.logging_utils import get_logger
 from odp_platform.common.string_utils import format_table_row, format_table_separator
 from odp_platform.common.system_utils import log_system_info
-from odp_platform.common.time_utils import time_it
+from odp_platform.common.performance_utils import time_it
 
 LINE_WIDTH: int = 80
 
